@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose'
 
 export interface ITeacher extends Document {
   // Personal Information
+  role: 'teacher'
   fullName: string
   age: number
   phone: string
@@ -23,6 +24,11 @@ export interface ITeacher extends Document {
 
 const TeacherSchema = new Schema<ITeacher>(
   {
+    role: {
+      type: String,
+      default: 'teacher',
+      enum: ['teacher'],
+    },
     fullName: {
       type: String,
       required: [true, 'Full name is required'],

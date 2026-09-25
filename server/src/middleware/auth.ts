@@ -2,7 +2,6 @@
 // import { User, IUser } from '../models/User'
 // import { verifyCookie } from '../utils/cookie'
 
-// // Extend Express Request type to include user
 // declare global {
 //   namespace Express {
 //     interface Request {
@@ -17,7 +16,6 @@
 //   next: NextFunction
 // ) => {
 //   try {
-//     // Get auth token from cookie
 //     const authToken = req.cookies.auth_token
 
 //     if (!authToken) {
@@ -27,10 +25,8 @@
 //       })
 //     }
 
-//     // Verify and decrypt cookie data
 //     const cookieData = verifyCookie(authToken)
 //     if (!cookieData) {
-//       // Clear invalid cookie
 //       res.clearCookie('auth_token')
 //       return res.status(401).json({
 //         success: false,
@@ -38,13 +34,6 @@
 //       })
 //     }
 
-//     // Check if session is still valid (optional: add timeout check)
-//     // const loginTime = cookieData.loginTime;
-//     // if (Date.now() - loginTime > 7 * 24 * 60 * 60 * 1000) {
-//     //   return res.status(401).json({ success: false, message: 'Session expired. Please login again.' });
-//     // }
-
-//     // Get user from database
 //     const user = await User.findById(cookieData.userId).select('-password')
 //     if (!user) {
 //       res.clearCookie('auth_token')
@@ -122,13 +111,36 @@
 
 import { Request, Response, NextFunction } from 'express'
 import { User, IUser } from '../models/User'
+import { Director, IDirector } from '../models/Director'
+import { CommitteeMember, ICommitteeMember } from '../models/CommitteeMember'
+import { Teacher, ITeacher } from '../models/Teacher'
 import { verifyCookie } from '../utils/cookie'
+
+export type AuthUser = IUser | IDirector | ICommitteeMember | ITeacher
 
 declare global {
   namespace Express {
     interface Request {
-      user?: IUser
+      user?: AuthUser
     }
+  }
+}
+
+async function findUserByIdAndRole(
+  id: string,
+  role: string
+): Promise<AuthUser | null> {
+  switch (role) {
+    case 'committee_leader':
+      return User.findById(id).select('-password')
+    case 'director':
+      return Director.findById(id).select('-password')
+    case 'committee_member':
+      return CommitteeMember.findById(id).select('-password')
+    case 'teacher':
+      return Teacher.findById(id).select('-password')
+    default:
+      return null
   }
 }
 
@@ -156,7 +168,9 @@ export const isAuthenticated = async (
       })
     }
 
-    const user = await User.findById(cookieData.userId).select('-password')
+    const { userId, role } = cookieData as { userId: string; role: string }
+
+    const user = await findUserByIdAndRole(userId, role)
     if (!user) {
       res.clearCookie('auth_token')
       return res.status(401).json({
@@ -165,7 +179,7 @@ export const isAuthenticated = async (
       })
     }
 
-    if (!user.isActive) {
+    if (!user.isActive || (user as { status?: string }).status === 'inactive') {
       return res.status(403).json({
         success: false,
         message: 'Account is disabled. Please contact administrator.',
@@ -204,7 +218,7 @@ export const authorize = (...roles: string[]) => {
 }
 
 export const checkRegistrationStatus = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ) => {
