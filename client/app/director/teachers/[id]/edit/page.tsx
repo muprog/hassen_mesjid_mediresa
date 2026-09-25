@@ -2,27 +2,66 @@
 
 import { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import {
-  createTeacherStart,
+  getTeacherByIdStart,
+  updateTeacherStart,
   clearTeacherError,
-} from '../../../store/slices/teacherSlice'
-import { AppDispatch, RootState } from '../../../store/store'
+  clearSelectedTeacher,
+} from '../../../../store/slices/teacherSlice'
+import { AppDispatch, RootState } from '../../../../store/store'
 
-export default function CreateTeacherPage() {
+export default function EditTeacherPage() {
   const dispatch = useDispatch<AppDispatch>()
   const router = useRouter()
-  const { isLoading, error } = useSelector((state: RootState) => state.teachers)
+  const params = useParams()
+  const teacherId = params.id as string
+
+  const { selectedTeacher, isLoading, error } = useSelector(
+    (state: RootState) => state.teachers
+  )
   const { user } = useSelector((state: RootState) => state.auth)
 
   const [formData, setFormData] = useState({
     fullName: '',
-    age: '',
     phone: '',
+    age: '',
     experience: '',
     kitabLearned: [''],
     status: 'active',
   })
+
+  const [isLoadingData, setIsLoadingData] = useState(true)
+
+  const isCommitteeLeader =
+    user?.role === 'committee_leader' || user?.role === 'committee_member'
+  const canEdit = isCommitteeLeader || user?.role === 'director'
+
+  useEffect(() => {
+    if (!canEdit) {
+      router.push('/unauthorized')
+      return
+    }
+
+    dispatch(getTeacherByIdStart(teacherId))
+  }, [dispatch, teacherId, canEdit, router])
+
+  useEffect(() => {
+    if (selectedTeacher) {
+      setFormData({
+        fullName: selectedTeacher.fullName || '',
+        phone: selectedTeacher.phone || '',
+        age: selectedTeacher.age?.toString() || '',
+        experience: selectedTeacher.experience?.toString() || '',
+        kitabLearned:
+          selectedTeacher.kitabLearned?.length > 0
+            ? selectedTeacher.kitabLearned
+            : [''],
+        status: selectedTeacher.status || 'active',
+      })
+      setIsLoadingData(false)
+    }
+  }, [selectedTeacher])
 
   useEffect(() => {
     if (error) {
@@ -31,35 +70,29 @@ export default function CreateTeacherPage() {
     }
   }, [error, dispatch])
 
-  const canCreate =
-    user?.role === 'committee_leader' ||
-    user?.role === 'committee_member' ||
-    user?.role === 'director'
+  useEffect(() => {
+    return () => {
+      dispatch(clearSelectedTeacher())
+    }
+  }, [dispatch])
 
-  if (!canCreate) {
-    return (
-      <div className='min-h-screen flex items-center justify-center'>
-        <div className='text-center'>
-          <h1 className='text-2xl font-bold text-red-600'>Access Denied</h1>
-          <p className='text-gray-600 mt-2'>
-            You don't have permission to create teachers.
-          </p>
-        </div>
-      </div>
-    )
+  if (!canEdit) {
+    return null
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     const teacherData = {
-      ...formData,
+      fullName: formData.fullName,
+      phone: formData.phone,
       age: parseInt(formData.age),
       experience: parseInt(formData.experience),
       kitabLearned: formData.kitabLearned.filter((k) => k.trim() !== ''),
+      status: formData.status,
     }
 
-    dispatch(createTeacherStart(teacherData))
+    dispatch(updateTeacherStart({ id: teacherId, data: teacherData }))
     router.push('/committee/teachers')
   }
 
@@ -80,28 +113,49 @@ export default function CreateTeacherPage() {
     }
   }
 
+  if (isLoadingData || isLoading) {
+    return (
+      <div className='flex justify-center items-center py-12'>
+        <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600'></div>
+      </div>
+    )
+  }
+
+  if (!selectedTeacher) {
+    return (
+      <div className='text-center py-12'>
+        <p className='text-gray-500'>Teacher not found</p>
+        <button
+          onClick={() => router.push('/committee/teachers')}
+          className='mt-4 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700'
+        >
+          Back to Teachers
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className='mb-6'>
-        <h1 className='text-2xl font-bold text-gray-900'>
-          Register New Teacher
-        </h1>
-        <p className='text-gray-600 mt-1'>
-          Add a new teacher to the Mediresa system
-        </p>
+        <h1 className='text-2xl font-bold text-gray-900'>Edit Teacher</h1>
+        <p className='text-gray-600 mt-1'>Update teacher information</p>
       </div>
 
-      <form onSubmit={handleSubmit} className='bg-white rounded-lg shadow p-6'>
+      <form
+        onSubmit={handleSubmit}
+        className='bg-white rounded-lg shadow p-6 max-w-2xl'
+      >
         {error && (
           <div className='mb-4 p-3 bg-red-50 border border-red-200 rounded-md'>
             <p className='text-sm text-red-600'>{error}</p>
           </div>
         )}
 
-        <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+        <div className='space-y-4'>
           <div>
             <label className='block text-sm font-medium text-gray-700'>
-              Full Name *
+              Full Name <span className='text-red-500'>*</span>
             </label>
             <input
               type='text'
@@ -117,7 +171,23 @@ export default function CreateTeacherPage() {
 
           <div>
             <label className='block text-sm font-medium text-gray-700'>
-              Age *
+              Phone Number <span className='text-red-500'>*</span>
+            </label>
+            <input
+              type='tel'
+              required
+              value={formData.phone}
+              onChange={(e) =>
+                setFormData({ ...formData, phone: e.target.value })
+              }
+              className='mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
+              placeholder='+251911111111'
+            />
+          </div>
+
+          <div>
+            <label className='block text-sm font-medium text-gray-700'>
+              Age <span className='text-red-500'>*</span>
             </label>
             <input
               type='number'
@@ -135,23 +205,7 @@ export default function CreateTeacherPage() {
 
           <div>
             <label className='block text-sm font-medium text-gray-700'>
-              Phone *
-            </label>
-            <input
-              type='tel'
-              required
-              value={formData.phone}
-              onChange={(e) =>
-                setFormData({ ...formData, phone: e.target.value })
-              }
-              className='mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
-              placeholder='+251911111111'
-            />
-          </div>
-
-          <div>
-            <label className='block text-sm font-medium text-gray-700'>
-              Experience (Years) *
+              Experience (Years) <span className='text-red-500'>*</span>
             </label>
             <input
               type='number'
@@ -166,9 +220,9 @@ export default function CreateTeacherPage() {
             />
           </div>
 
-          <div className='md:col-span-2'>
+          <div>
             <label className='block text-sm font-medium text-gray-700'>
-              Kitab Learned (Books)
+              Kitab Learned
             </label>
             <p className='text-xs text-gray-500 mb-2'>
               Add all the books/kitabs this teacher has learned or teaches
@@ -208,10 +262,7 @@ export default function CreateTeacherPage() {
             <select
               value={formData.status}
               onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  status: e.target.value as 'active' | 'inactive' | 'on_leave',
-                })
+                setFormData({ ...formData, status: e.target.value })
               }
               className='mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500'
             >
@@ -235,7 +286,7 @@ export default function CreateTeacherPage() {
             disabled={isLoading}
             className='px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50'
           >
-            {isLoading ? 'Registering...' : 'Register Teacher'}
+            {isLoading ? 'Updating...' : 'Update Teacher'}
           </button>
         </div>
       </form>

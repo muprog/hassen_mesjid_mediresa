@@ -219,6 +219,7 @@ export default function Sidebar() {
         { path: '/director/students', label: 'Students', icon: '👨‍🎓' },
         { path: '/director/teachers', label: 'Teachers', icon: '👨‍🏫' },
         { path: '/director/payments', label: 'Payments', icon: '💰' },
+        { path: '/director/reports', label: 'Reports', icon: '📈' },
       ]
     }
 
