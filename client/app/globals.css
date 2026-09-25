@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+/* Mobile responsive improvements */
+@media (max-width: 768px) {
+  .overflow-auto {
+    overflow-x: hidden;
+  }
+
+  /* Make tables scrollable on mobile */
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Smooth transitions for sidebar */
+.sidebar-transition {
+  transition: transform 0.3s ease-in-out;
+}
+
+/* Prevent body scroll when mobile menu is open */
+.no-scroll {
+  overflow: hidden;
+}
