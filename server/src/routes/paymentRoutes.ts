@@ -53,6 +53,7 @@ import {
   getPaymentsGrid,
   createPaymentForMonth,
   generateForMonth,
+  markMonthPaid,
 } from '../controllers/paymentController'
 import { isAuthenticated, authorize } from '../middleware/auth'
 
@@ -81,6 +82,11 @@ router.post(
   '/generate-this-month',
   authorize('committee_leader', 'director'),
   generateThisMonth
+)
+router.post(
+  '/mark-month-paid',
+  authorize('committee_leader', 'director'),
+  markMonthPaid
 )
 router.patch(
   '/:id/mark-paid',

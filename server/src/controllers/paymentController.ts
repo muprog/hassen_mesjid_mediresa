@@ -1197,3 +1197,136 @@ export const generateForMonth = async (
       .json({ success: false, message: 'Error generating pending records' })
   }
 }
+// ============================================
+// MARK MONTH PAID (create if missing)
+// ============================================
+interface MarkMonthPaidBody {
+  studentId: string
+  periodYear: number | string
+  periodMonth: number | string
+  paymentType?: string | null
+}
+
+export const markMonthPaid = async (
+  req: Request<{}, {}, MarkMonthPaidBody>,
+  res: Response
+): Promise<Response> => {
+  try {
+    const { studentId, periodYear, periodMonth, paymentType } = req.body
+
+    if (!studentId || !periodYear || !periodMonth) {
+      return res.status(400).json({
+        success: false,
+        message: 'studentId, periodYear, periodMonth are required',
+      })
+    }
+
+    const student = await Student.findById(studentId)
+    if (!student) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Student not found' })
+    }
+
+    if (!student.hasPayment) {
+      return res.status(400).json({
+        success: false,
+        message: 'This student does not pay fees',
+      })
+    }
+
+    const y = Number(periodYear)
+    const m = Number(periodMonth)
+    if (Number.isNaN(y) || Number.isNaN(m) || m < 1 || m > 12) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid month/year' })
+    }
+
+    // Resolve the payment type — explicit choice, else student default
+    const chosenTypeId = paymentType ?? student.paymentType ?? null
+    if (!chosenTypeId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Select a payment type',
+      })
+    }
+
+    const pt = await PaymentType.findById(chosenTypeId)
+    if (!pt || !pt.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment type not found or inactive',
+      })
+    }
+
+    const periodLabel = `${MONTHS[pt.period === 'yearly' ? 0 : m - 1]} ${y}`
+    // Actually always use calendar month for the label:
+    const label = `${MONTHS[m - 1]} ${y}`
+
+    // Find or create the record
+    let payment = await Payment.findOne({
+      student: student._id,
+      periodYear: y,
+      periodMonth: m,
+      isActive: true,
+    })
+
+    if (payment) {
+      payment.paymentType = pt._id
+      payment.typeName = pt.name
+      payment.typeAmount = pt.defaultAmount
+      payment.amountDue = pt.defaultAmount
+      payment.amountPaid = pt.defaultAmount
+      payment.status = 'paid'
+      payment.paidDate = new Date()
+      payment.method = payment.method ?? 'cash'
+      payment.receivedBy = req.user?._id ?? null
+    } else {
+      payment = new Payment({
+        student: student._id,
+        paymentType: pt._id,
+        typeName: pt.name,
+        typeAmount: pt.defaultAmount,
+        periodYear: y,
+        periodMonth: m,
+        periodLabel: label,
+        amountDue: pt.defaultAmount,
+        amountPaid: pt.defaultAmount,
+        status: 'paid',
+        paidDate: new Date(),
+        method: 'cash',
+        receivedBy: req.user?._id ?? null,
+        createdBy: req.user?._id,
+      })
+    }
+
+    await payment.save()
+
+    // Remember the chosen type for future payments
+    await Student.findByIdAndUpdate(student._id, {
+      paymentType: pt._id,
+      defaultAmount: pt.defaultAmount,
+    })
+
+    const populated = await Payment.findById(payment._id)
+      .populate({
+        path: 'student',
+        select:
+          'code fullName fatherPhone motherPhone haleqa section hasPayment',
+      })
+      .populate('paymentType', 'name defaultAmount period')
+      .populate('receivedBy', 'name fullName email')
+
+    return res.status(200).json({
+      success: true,
+      message: `Marked ${label} as paid`,
+      data: populated,
+    })
+  } catch (err) {
+    console.error('Mark month paid error:', getErrorMessage(err))
+    return res
+      .status(500)
+      .json({ success: false, message: 'Error marking month paid' })
+  }
+}

@@ -190,6 +190,12 @@ export const paymentAPI = {
 
   generateForMonth: (year: number, month: number) =>
     api.post('/payments/generate-month', { year, month }),
+  markMonthPaid: (data: {
+    studentId: string
+    periodYear: number
+    periodMonth: number
+    paymentType?: string | null
+  }) => api.post('/payments/mark-month-paid', data),
 }
 export const reportAPI = {
   getPaymentReport: (params: {

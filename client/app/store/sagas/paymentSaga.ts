@@ -179,6 +179,9 @@ import {
   generateForMonthStart,
   generateForMonthSuccess,
   generateForMonthFailure,
+  markMonthPaidStart,
+  markMonthPaidSuccess,
+  markMonthPaidFailure,
   type Payment,
   type GridStudent,
   type GridPayment,
@@ -380,6 +383,26 @@ function* handleCreateForMonth(action: {
     )
   }
 }
+function* handleMarkMonthPaid(action: {
+  type: string
+  payload: {
+    studentId: string
+    periodYear: number
+    periodMonth: number
+    paymentType?: string | null
+  }
+}) {
+  try {
+    const res: AxiosResponse<ItemResponse> = yield call(() =>
+      paymentAPI.markMonthPaid(action.payload)
+    )
+    yield put(markMonthPaidSuccess(res.data.data))
+  } catch (err) {
+    yield put(
+      markMonthPaidFailure(getErrorMessage(err, 'Failed to mark month paid'))
+    )
+  }
+}
 
 function* handleGenerateForMonth(action: {
   type: string
@@ -412,4 +435,6 @@ export function* paymentSaga() {
 
   yield takeLatest(createForMonthStart.type, handleCreateForMonth)
   yield takeLatest(generateForMonthStart.type, handleGenerateForMonth)
+
+  yield takeLatest(markMonthPaidStart.type, handleMarkMonthPaid)
 }

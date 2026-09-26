@@ -731,6 +731,51 @@ const paymentSlice = createSlice({
       state.isLoading = false
       state.error = action.payload
     },
+    markMonthPaidStart: (
+      state,
+      _action: PayloadAction<{
+        studentId: string
+        periodYear: number
+        periodMonth: number
+        paymentType?: string | null
+      }>
+    ) => {
+      state.isLoading = true
+      state.error = null
+      state.successMessage = null
+    },
+    markMonthPaidSuccess: (state, action: PayloadAction<Payment>) => {
+      state.isLoading = false
+      // Add/replace in grid
+      const gIdx = state.gridPayments.findIndex(
+        (p) => p._id === action.payload._id
+      )
+      const asGrid = {
+        _id: action.payload._id,
+        student: action.payload.student._id,
+        paymentType: action.payload.paymentType,
+        typeName: action.payload.typeName,
+        typeAmount: action.payload.typeAmount,
+        periodYear: action.payload.periodYear,
+        periodMonth: action.payload.periodMonth,
+        periodLabel: action.payload.periodLabel,
+        amountDue: action.payload.amountDue,
+        amountPaid: action.payload.amountPaid,
+        status: action.payload.status,
+        paidDate: action.payload.paidDate,
+        method: action.payload.method,
+        receivedBy: action.payload.receivedBy,
+        note: action.payload.note,
+      }
+      if (gIdx === -1) state.gridPayments.push(asGrid)
+      else state.gridPayments[gIdx] = asGrid
+
+      state.successMessage = 'Marked as paid'
+    },
+    markMonthPaidFailure: (state, action: PayloadAction<string>) => {
+      state.isLoading = false
+      state.error = action.payload
+    },
 
     // MISC --------------------------------------------------------------
     clearPaymentError: (state) => {
@@ -777,6 +822,10 @@ export const {
   generateForMonthStart,
   generateForMonthSuccess,
   generateForMonthFailure,
+
+  markMonthPaidStart,
+  markMonthPaidSuccess,
+  markMonthPaidFailure,
 
   clearPaymentError,
   clearPaymentSuccess,

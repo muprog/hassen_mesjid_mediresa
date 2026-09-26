@@ -1219,6 +1219,7 @@ import {
   createForMonthStart,
   clearPaymentError,
   clearPaymentSuccess,
+  markMonthPaidStart,
   type GridPayment,
   type GridStudent,
 } from '../../store/slices/paymentSlice'
@@ -1404,6 +1405,21 @@ export default function PaymentsGridPage() {
     }
   }, [error, successMessage, dispatch])
 
+  const handleMarkMonthPaid = (
+    s: GridStudent,
+    y: number,
+    m: number,
+    paymentType: string
+  ) => {
+    dispatch(
+      markMonthPaidStart({
+        studentId: s._id,
+        periodYear: y,
+        periodMonth: m,
+        paymentType,
+      })
+    )
+  }
   const handleApplyRange = () => {
     dispatch(
       setWindow({
@@ -1732,6 +1748,7 @@ export default function PaymentsGridPage() {
                               }
                               onCreatePending={handleCreatePending}
                               onCreateAndPay={handleCreateAndPay}
+                              onMarkMonthPaid={handleMarkMonthPaid}
                             />
                           </td>
                         )
