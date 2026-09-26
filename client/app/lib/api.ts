@@ -29,6 +29,12 @@ export const authAPI = {
 
   // Get current user
   getCurrentUser: () => api.get('/auth/me'),
+  forgotPassword: (data: { email: string }) =>
+    api.post('/auth/forgot-password', data),
+  verifyOtp: (data: { email: string; otp: string }) =>
+    api.post('/auth/verify-otp', data),
+  resetPassword: (data: { resetToken: string; newPassword: string }) =>
+    api.post('/auth/reset-password', data),
 }
 export const studentAPI = {
   // Create student

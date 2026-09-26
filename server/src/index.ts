@@ -1,7 +1,10 @@
+import dotenv from 'dotenv'
+dotenv.config()
+
 import express, { Express, Request, Response } from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
-import dotenv from 'dotenv'
+
 import mongoose from 'mongoose'
 import authRoutes from './routes/authRoutes'
 import studentRoutes from './routes/studentRoutes'
@@ -13,9 +16,9 @@ import paymentRoutes from './routes/paymentRoutes'
 import reportRoutes from './routes/reportRoutes'
 import { generatePendingPayments } from './utils/generatePendingPayments'
 import { User } from './models/User'
-
-dotenv.config()
-
+console.log('SMTP_HOST =', process.env.SMTP_HOST)
+console.log('SMTP_USER =', process.env.SMTP_USER ? 'set' : 'missing')
+console.log('SMTP_PASS =', process.env.SMTP_PASS ? 'set' : 'missing')
 const app: Express = express()
 const PORT = process.env.PORT || 5000
 

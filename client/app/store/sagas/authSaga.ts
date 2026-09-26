@@ -88,6 +88,7 @@
 
 import { call, put, takeLatest } from 'redux-saga/effects'
 import { authAPI } from '@/app/lib/api'
+import axios from 'axios'
 import {
   checkRegistrationStatus,
   checkRegistrationStatusSuccess,
@@ -101,6 +102,15 @@ import {
   checkAuthStart,
   checkAuthSuccess,
   checkAuthFailure,
+  forgotPasswordStart,
+  forgotPasswordSuccess,
+  forgotPasswordFailure,
+  verifyOtpStart,
+  verifyOtpSuccess,
+  verifyOtpFailure,
+  resetPasswordStart,
+  resetPasswordSuccess,
+  resetPasswordFailure,
   logoutStart,
   logoutSuccess,
   logoutFailure,
@@ -203,11 +213,85 @@ function* handleLogout() {
     yield put(logoutFailure(error.message || 'Logout failed'))
   }
 }
+function* handleForgotPassword(action: {
+  type: string
+  payload: { email: string }
+}) {
+  try {
+    const res: AxiosResponse<{ success: boolean; message: string }> =
+      yield call(() => authAPI.forgotPassword({ email: action.payload.email }))
+    yield put(
+      forgotPasswordSuccess({
+        email: action.payload.email,
+        message: res.data.message,
+      })
+    )
+  } catch (err: unknown) {
+    let message = 'Failed to send OTP'
+    if (axios.isAxiosError(err)) {
+      const data = err.response?.data as { message?: string } | undefined
+      message = data?.message ?? err.message ?? message
+    } else if (err instanceof Error) {
+      message = err.message
+    }
+    yield put(forgotPasswordFailure(message))
+  }
+}
 
+function* handleVerifyOtp(action: {
+  type: string
+  payload: { email: string; otp: string }
+}) {
+  try {
+    const res: AxiosResponse<{
+      success: boolean
+      resetToken: string
+      message: string
+    }> = yield call(() => authAPI.verifyOtp(action.payload))
+    yield put(
+      verifyOtpSuccess({
+        email: action.payload.email,
+        resetToken: res.data.resetToken,
+      })
+    )
+  } catch (err: unknown) {
+    let message = 'Invalid OTP'
+    if (axios.isAxiosError(err)) {
+      const data = err.response?.data as { message?: string } | undefined
+      message = data?.message ?? err.message ?? message
+    } else if (err instanceof Error) {
+      message = err.message
+    }
+    yield put(verifyOtpFailure(message))
+  }
+}
+
+function* handleResetPassword(action: {
+  type: string
+  payload: { resetToken: string; newPassword: string }
+}) {
+  try {
+    const res: AxiosResponse<{ success: boolean; message: string }> =
+      yield call(() => authAPI.resetPassword(action.payload))
+    yield put(resetPasswordSuccess(res.data.message))
+  } catch (err: unknown) {
+    let message = 'Failed to reset password'
+    if (axios.isAxiosError(err)) {
+      const data = err.response?.data as { message?: string } | undefined
+      message = data?.message ?? err.message ?? message
+    } else if (err instanceof Error) {
+      message = err.message
+    }
+    yield put(resetPasswordFailure(message))
+  }
+}
 export function* authSaga() {
   yield takeLatest(checkRegistrationStatus.type, handleCheckRegistrationStatus)
   yield takeLatest(registerStart.type, handleRegister)
   yield takeLatest(loginStart.type, handleLogin)
   yield takeLatest(checkAuthStart.type, handleCheckAuth)
   yield takeLatest(logoutStart.type, handleLogout)
+  yield takeLatest(forgotPasswordStart.type, handleForgotPassword)
+  yield takeLatest(verifyOtpStart.type, handleVerifyOtp)
+  yield takeLatest(resetPasswordStart.type, handleResetPassword)
 }

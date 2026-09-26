@@ -5,6 +5,8 @@ import { CommitteeMember, ICommitteeMember } from '../models/CommitteeMember'
 import { Teacher, ITeacher } from '../models/Teacher'
 import { hashPassword, comparePassword } from '../utils/bcrypt'
 import { setAuthCookie, clearAuthCookie, verifyCookie } from '../utils/cookie'
+import crypto from 'crypto'
+import { sendOtpEmail } from '../utils/email'
 
 // Unified user type used for login and cookies
 type LoginUser = IUser | IDirector | ICommitteeMember | ITeacher
@@ -313,6 +315,325 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Error checking authentication status.',
+    })
+  }
+}
+
+const forgotAttempts = new Map<string, number[]>()
+const RATE_WINDOW_MS = 15 * 60 * 1000
+const RATE_MAX = 3
+
+function rateLimited(email: string): boolean {
+  const now = Date.now()
+  const arr = forgotAttempts.get(email) ?? []
+  const recent = arr.filter((t) => now - t < RATE_WINDOW_MS)
+  if (recent.length >= RATE_MAX) return true
+  recent.push(now)
+  forgotAttempts.set(email, recent)
+  return false
+}
+
+function generateOtp(): string {
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0')
+}
+
+function generateResetToken(): string {
+  return crypto.randomBytes(32).toString('hex')
+}
+// ============================================
+// FORGOT PASSWORD — send OTP
+// ============================================
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body as { email?: string }
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required',
+      })
+    }
+
+    const normalized = email.toLowerCase().trim()
+
+    if (rateLimited(normalized)) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many requests. Try again in 15 minutes.',
+      })
+    }
+
+    const found = await findUserByEmail(normalized)
+
+    if (!found) {
+      return res.status(200).json({
+        success: true,
+        message: 'If that email exists, an OTP has been sent.',
+      })
+    }
+
+    const { user, role } = found
+    // const name =
+    //   (user.name ?? (user as unknown as { fullName?: string }).fullName) || ''
+    const nameSource = user as unknown as {
+      name?: string
+      fullName?: string
+    }
+    const name = nameSource.name ?? nameSource.fullName ?? ''
+    const otp = generateOtp()
+    const otpHash = await hashPassword(otp)
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
+
+    const target = user as unknown as {
+      resetOtpHash?: string | null
+      resetOtpExpiresAt?: Date | null
+      resetOtpAttempts?: number
+      resetOtpVerified?: boolean
+      resetToken?: string | null
+      resetTokenExpiresAt?: Date | null
+      save?: () => Promise<unknown>
+    }
+
+    target.resetOtpHash = otpHash
+    target.resetOtpExpiresAt = expiresAt
+    target.resetOtpAttempts = 0
+    target.resetOtpVerified = false
+    target.resetToken = null
+    target.resetTokenExpiresAt = null
+
+    if (typeof target.save === 'function') {
+      await target.save()
+    }
+
+    try {
+      await sendOtpEmail({
+        to: normalized,
+        name,
+        otp,
+        expiresInMinutes: 15,
+      })
+    } catch (mailErr) {
+      console.error('Failed to send OTP email:', mailErr)
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP. Please try again.',
+      })
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'If that email exists, an OTP has been sent.',
+    })
+  } catch (error) {
+    console.error('Forgot password error:', error)
+    return res.status(500).json({
+      success: false,
+      message: 'Error processing request.',
+    })
+  }
+}
+
+// ============================================
+// VERIFY OTP
+// ============================================
+export const verifyOtp = async (req: Request, res: Response) => {
+  try {
+    const { email, otp } = req.body as { email?: string; otp?: string }
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and OTP are required',
+      })
+    }
+
+    const normalized = email.toLowerCase().trim()
+    const found = await findUserByEmail(normalized)
+
+    if (!found) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP.',
+      })
+    }
+
+    const { user } = found
+
+    const target = user as unknown as {
+      resetOtpHash?: string | null
+      resetOtpExpiresAt?: Date | null
+      resetOtpAttempts?: number
+      resetOtpVerified?: boolean
+      resetToken?: string | null
+      resetTokenExpiresAt?: Date | null
+      save?: () => Promise<unknown>
+    }
+
+    if (!target.resetOtpHash || !target.resetOtpExpiresAt) {
+      return res.status(400).json({
+        success: false,
+        message: 'No active OTP. Please request a new one.',
+      })
+    }
+
+    if (target.resetOtpExpiresAt.getTime() < Date.now()) {
+      target.resetOtpHash = null
+      target.resetOtpExpiresAt = null
+      target.resetOtpAttempts = 0
+      target.resetOtpVerified = false
+      if (typeof target.save === 'function') await target.save()
+      return res.status(400).json({
+        success: false,
+        message: 'OTP expired. Please request a new one.',
+      })
+    }
+
+    if ((target.resetOtpAttempts ?? 0) >= 5) {
+      target.resetOtpHash = null
+      target.resetOtpExpiresAt = null
+      target.resetOtpAttempts = 0
+      target.resetOtpVerified = false
+      if (typeof target.save === 'function') await target.save()
+      return res.status(429).json({
+        success: false,
+        message: 'Too many failed attempts. Please request a new OTP.',
+      })
+    }
+
+    const valid = await comparePassword(otp, target.resetOtpHash)
+    if (!valid) {
+      target.resetOtpAttempts = (target.resetOtpAttempts ?? 0) + 1
+      if (typeof target.save === 'function') await target.save()
+      const remaining = 5 - target.resetOtpAttempts
+      return res.status(400).json({
+        success: false,
+        message: `Invalid OTP. ${remaining} attempts remaining.`,
+      })
+    }
+
+    const resetToken = generateResetToken()
+    target.resetOtpVerified = true
+    target.resetToken = resetToken
+    target.resetTokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000)
+    if (typeof target.save === 'function') await target.save()
+
+    return res.status(200).json({
+      success: true,
+      message: 'OTP verified',
+      resetToken,
+    })
+  } catch (error) {
+    console.error('Verify OTP error:', error)
+    return res.status(500).json({
+      success: false,
+      message: 'Error verifying OTP.',
+    })
+  }
+}
+
+// ============================================
+// RESET PASSWORD
+// ============================================
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { resetToken, newPassword } = req.body as {
+      resetToken?: string
+      newPassword?: string
+    }
+
+    if (!resetToken || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset token and new password are required',
+      })
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters',
+      })
+    }
+    async function findUserByResetToken(
+      resetToken: string
+    ): Promise<FoundUser | null> {
+      const now = new Date()
+
+      const leader = await User.findOne({
+        resetToken,
+        resetTokenExpiresAt: { $gt: now },
+        resetOtpVerified: true,
+      })
+      if (leader) return { user: leader, role: 'committee_leader' }
+
+      const director = await Director.findOne({
+        resetToken,
+        resetTokenExpiresAt: { $gt: now },
+        resetOtpVerified: true,
+      })
+      if (director) return { user: director, role: 'director' }
+
+      const member = await CommitteeMember.findOne({
+        resetToken,
+        resetTokenExpiresAt: { $gt: now },
+        resetOtpVerified: true,
+      })
+      if (member) return { user: member, role: 'committee_member' }
+
+      const teacher = await Teacher.findOne({
+        resetToken,
+        resetTokenExpiresAt: { $gt: now },
+        resetOtpVerified: true,
+      })
+      if (teacher) return { user: teacher, role: 'teacher' }
+
+      return null
+    }
+
+    const found = await findUserByResetToken(resetToken)
+    if (!found) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token. Please start over.',
+      })
+    }
+
+    const { user } = found
+    const target = user as unknown as {
+      password: string
+      resetToken?: string | null
+      resetTokenExpiresAt?: Date | null
+      resetOtpHash?: string | null
+      resetOtpExpiresAt?: Date | null
+      resetOtpAttempts?: number
+      resetOtpVerified?: boolean
+      save?: () => Promise<unknown>
+    }
+
+    const hashed = await hashPassword(newPassword)
+    target.password = hashed
+
+    // Clear all reset fields
+    target.resetToken = null
+    target.resetTokenExpiresAt = null
+    target.resetOtpHash = null
+    target.resetOtpExpiresAt = null
+    target.resetOtpAttempts = 0
+    target.resetOtpVerified = false
+
+    if (typeof target.save === 'function') {
+      await target.save()
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password reset successfully. Please log in.',
+    })
+  } catch (error) {
+    console.error('Reset password error:', error)
+    return res.status(500).json({
+      success: false,
+      message: 'Error resetting password.',
     })
   }
 }

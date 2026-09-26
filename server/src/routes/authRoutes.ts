@@ -6,6 +6,9 @@ import {
   getCurrentUser,
   checkRegistrationStatus,
   checkAuthStatus,
+  forgotPassword,
+  verifyOtp,
+  resetPassword,
 } from '../controllers/authController'
 import {
   isAuthenticated,
@@ -20,5 +23,9 @@ router.post('/register', checkRegistration, registerCommitteeLeader)
 router.post('/login', login)
 router.post('/logout', isAuthenticated, logout)
 router.get('/me', isAuthenticated, getCurrentUser)
+
+router.post('/forgot-password', forgotPassword)
+router.post('/verify-otp', verifyOtp)
+router.post('/reset-password', resetPassword)
 
 export default router

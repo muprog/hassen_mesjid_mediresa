@@ -12,6 +12,13 @@ export interface ICommitteeMember extends Document {
   lastLogin?: Date
   createdAt: Date
   updatedAt: Date
+  // interface additions
+  resetOtpHash?: string | null
+  resetOtpExpiresAt?: Date | null
+  resetOtpAttempts: number
+  resetOtpVerified: boolean
+  resetToken?: string | null
+  resetTokenExpiresAt?: Date | null
 }
 
 const CommitteeMemberSchema = new Schema<ICommitteeMember>(
@@ -59,6 +66,13 @@ const CommitteeMemberSchema = new Schema<ICommitteeMember>(
       type: Date,
       default: null,
     },
+    // schema additions
+    resetOtpHash: { type: String, default: null },
+    resetOtpExpiresAt: { type: Date, default: null },
+    resetOtpAttempts: { type: Number, default: 0 },
+    resetOtpVerified: { type: Boolean, default: false },
+    resetToken: { type: String, default: null },
+    resetTokenExpiresAt: { type: Date, default: null },
   },
   {
     timestamps: true,

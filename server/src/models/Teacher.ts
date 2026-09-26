@@ -20,6 +20,13 @@ export interface ITeacher extends Document {
   isActive: boolean
   createdAt: Date
   updatedAt: Date
+  // interface additions
+  resetOtpHash?: string | null
+  resetOtpExpiresAt?: Date | null
+  resetOtpAttempts: number
+  resetOtpVerified: boolean
+  resetToken?: string | null
+  resetTokenExpiresAt?: Date | null
 }
 
 const TeacherSchema = new Schema<ITeacher>(
@@ -68,6 +75,13 @@ const TeacherSchema = new Schema<ITeacher>(
       type: Boolean,
       default: true,
     },
+    // schema additions
+    resetOtpHash: { type: String, default: null },
+    resetOtpExpiresAt: { type: Date, default: null },
+    resetOtpAttempts: { type: Number, default: 0 },
+    resetOtpVerified: { type: Boolean, default: false },
+    resetToken: { type: String, default: null },
+    resetTokenExpiresAt: { type: Date, default: null },
   },
   {
     timestamps: true,
