@@ -46,6 +46,11 @@ export default function Sidebar() {
           label: 'Payment types',
           icon: '🏷️',
         },
+        {
+          path: '/committee/attendance/print',
+          label: 'Attendance Print',
+          icon: '🖨️',
+        },
         { path: '/committee/reports', label: 'Reports', icon: '📈' },
       ]
     }
